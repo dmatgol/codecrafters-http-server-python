@@ -18,6 +18,7 @@ def main():
         request_data = connection.recv(1024)
         print("Received request data:")
         print(request_data.decode('utf-8'))
+        print(request_data)
         response = parse_request(request_data)
         connection.sendall(response)
         connection.close()
@@ -25,25 +26,26 @@ def main():
 
 def parse_request(request_data: bytes):
     decoded_response = request_data.decode('utf-8')
-    request_line = decoded_response.split('\r\n')[0]
-    method, path, http_version = request_line.split()
-    print(path == "/")
+    request = decoded_response.split('\r\n')
+    method, path, http_version = request[0].split()
     if path == "/":
         response = b"HTTP/1.1 200 OK\r\n\r\n"
     elif "echo" in path:
-        response = generate_response(path, http_version)
+        request_body = path.split("/")[-1]
+        response = generate_response(request_body, http_version)
+    elif "user-agent" in path:
+        request_body = request[2].split(' ')[-1]
+        response = generate_response(request_body, http_version)
     else:
         response = b"HTTP/1.1 404 Not Found\r\n\r\n"
     return response
 
 
-def generate_response(path: str, http_version):
+def generate_response(request_body: str, http_version):
     status_code = "200 OK\r\n"
     content_type = "Content-Type: text/plain\r\n"
-    content = path.split('/')[-1]
-    content_len = f'Content-Length: {len(content)}\r\n\r\n'
-    response = f"{http_version} {status_code}{content_type}{content_len}{content}"
-    print(response)
+    content_len = f'Content-Length: {len(request_body)}\r\n\r\n'
+    response = f"{http_version} {status_code}{content_type}{content_len}{request_body}"
     response = response.encode('utf-8')
     return response
                 
