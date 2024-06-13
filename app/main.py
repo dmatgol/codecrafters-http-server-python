@@ -1,57 +1,119 @@
-# Uncomment this to pass the first stage
-import socket
+import asyncio
+from urllib.parse import unquote
 
 
+class HTTPServer:
+    def __init__(self, host="localhost", port=4221):
+        self.host = host
+        self.port = port
+        self.server = None
+        self.routes = {
+            "/": self.handle_root,
+            "/echo": self.handle_echo,
+            "/user-agent": self.handle_user_agent,
+        }
+
+    async def start_server(self):
+        self.server = await asyncio.start_server(
+            self.handle_connection, self.host, self.port
+        )
+        addrs = ', '.join(str(sock.getsockname()) for sock in self.server.sockets)
+        print(f'serving on {addrs}')
+
+        async with self.server:
+            await self.server.serve_forever()
+
+    async def handle_connection(self, reader, writer):
+        while True:
+            request = await reader.read()
+            if not request:
+                print("Close the connection")
+                writer.close()
+                await writer.wait_closed()
+                return
+            
+            request = HTTPRequest.from_raw_response(request)
+            target_path = request.target.split("?")[0]
+            handler = self.routes.get(target_path, self.handle_dynamic_route)
+            await handler(writer, request)
+            
+    async def handle_root(self, writer, request):
+        headers = {"Content-Type": "text/plain", "Content-Length": "2"}
+        return await self.send_response(writer, HTTPResponse(200, headers, "OK"))
+    
+    async def handle_echo(self, writer, request):
+        echoed_string = request.target.split("/echo/", 1)[-1]
+        echoed_string = unquote(echoed_string)
+        headers = {
+            "Content-Type": "text/plain",
+            "Content-Length": str(len(echoed_string)),
+        }
+        await self.send_response(writer, HTTPResponse(200, headers, echoed_string))
+
+    async def handle_dynamic_route(self, writer, request):
+        if request.target.startswith("/echo/"):
+            await self.handle_echo(writer, request)
+        else:
+            await self.handle_404(writer)
+    
+    async def handle_404(self, writer):
+        headers = {"Content-Type": "text/plain", "Content-Length": "13"}
+        await self.send_response(writer, HTTPResponse(404, headers, "404 Not Found"))
+
+    async def handle_user_agent(self, writer, request):
+        user_agent = request[2].split(' ')[-1]
+        headers = {
+            "Content-Type": "text/plain",
+            "Content-Length": str(len(user_agent)),
+        }
+        await self.send_response(writer, HTTPResponse(200, headers, user_agent))
 
 
+    async def send_response(self, writer, response):
+        raw_response = response.to_raw_response()
+        writer.write(raw_response.encode("utf-8"))
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+    
 
-def main():
-    # You can use print statements as follows for debugging, they'll be visible when running tests.
-    print("Logs from your program will appear here!")
+class HTTPResponse:
+    
+    def __init__(self, status, headers, message):
+        self.status_code = status
+        self.headers = headers
+        self.message = message
 
-    # Uncomment this to pass the first stage
-    #
-    server_socket = socket.create_server(("localhost", 4221), reuse_port=True)
-    while True:
-        connection, client_address = server_socket.accept() # wait for clienter
-        print(f"connection from client address: {client_address}")
-        request_data = connection.recv(1024)
-        print("Received request data:")
-        print(request_data.decode('utf-8'))
-        print(request_data)
-        response = parse_request(request_data)
-        connection.sendall(response)
-        connection.close()
+    def to_raw_response(self):
+        response_line = f"HTTP/1.1 {self.status_code} {self.get_reason_phrase()}\r\n"
+        headers = "".join(
+            [f"{key}: {value}\r\n" for key, value in self.headers.items()]
+        )
+        return response_line + headers + "\r\n" + self.message
 
+    def get_reason_phrase(self):
+        phrases = {
+            200: "OK",
+            404: "Not Found",
+        }
+        return phrases.get(self.status_code, "")
 
-def parse_request(request_data: bytes):
-    decoded_response = request_data.decode('utf-8')
-    request = decoded_response.split('\r\n')
-    method, path, http_version = request[0].split()
-    if path == "/":
-        response = b"HTTP/1.1 200 OK\r\n\r\n"
-    elif "echo" in path:
-        request_body = path.split("/")[-1]
-        response = generate_response(request_body, http_version)
-    elif "user-agent" in path:
-        request_body = request[2].split(' ')[-1]
-        response = generate_response(request_body, http_version)
-    else:
-        response = b"HTTP/1.1 404 Not Found\r\n\r\n"
-    return response
+            
+class HTTPRequest:
 
+    def __init__(self, method, target, header) -> None:
+        self.method = method
+        self.target = target
+        self.header = header
 
-def generate_response(request_body: str, http_version):
-    status_code = "200 OK\r\n"
-    content_type = "Content-Type: text/plain\r\n"
-    content_len = f'Content-Length: {len(request_body)}\r\n\r\n'
-    response = f"{http_version} {status_code}{content_type}{content_len}{request_body}"
-    response = response.encode('utf-8')
-    return response
-                
-
-
+    @classmethod
+    def from_raw_response(cls, raw_request: bytes):
+        decoded_response = raw_request.decode('utf-8')
+        request_lines = decoded_response.split('\r\n')
+        method, path, header = request_lines[0].split()
+        return cls(method, path, header)
 
 
 if __name__ == "__main__":
-    main()
+    server = HTTPServer()
+    asyncio.run(server.start_server())
