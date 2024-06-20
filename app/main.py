@@ -37,7 +37,7 @@ class HTTPServer:
             
             request = HTTPRequest.from_raw_response(request)
             
-            target_path = request.target.split("?")[0].strip("/")
+            target_path = request.target.split("?")[0].strip("/").split('/')[0]
             target_path = f"/{target_path}"
             print(target_path)
             handler = self.routes.get(target_path, self.handle_dynamic_route)
