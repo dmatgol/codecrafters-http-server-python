@@ -26,7 +26,6 @@ class HTTPServer:
     async def handle_connection(self, reader, writer):
         while True:
             request = await reader.read(1024)
-            print(request)
             if not request:
                 print("Close the connection")
                 writer.close()
@@ -34,7 +33,6 @@ class HTTPServer:
                 return
             
             request = HTTPRequest.from_raw_response(request)
-            print(request)
             
             target_path = request.target.split("?")[0]
             handler = self.routes.get(target_path, self.handle_dynamic_route)
@@ -64,7 +62,7 @@ class HTTPServer:
         await self.send_response(writer, HTTPResponse(404, headers, "404 Not Found"))
 
     async def handle_user_agent(self, writer, request):
-        user_agent = request[2].split(' ')[-1]
+        user_agent = request.header.split(' ')[-1]
         headers = {
             "Content-Type": "text/plain",
             "Content-Length": str(len(user_agent)),
@@ -113,6 +111,7 @@ class HTTPRequest:
     def from_raw_response(cls, raw_request: bytes):
         decoded_response = raw_request.decode('utf-8')
         request_lines = decoded_response.split('\r\n')
+        print(request_lines)
         method, path, header = request_lines[0].split()
         return cls(method, path, header)
 
