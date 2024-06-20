@@ -62,7 +62,7 @@ class HTTPServer:
         await self.send_response(writer, HTTPResponse(404, headers, "404 Not Found"))
 
     async def handle_user_agent(self, writer, request):
-        user_agent = request.header.split(' ')[-1]
+        user_agent = request.header.get('User-Agent', 'Unknown')
         headers = {
             "Content-Type": "text/plain",
             "Content-Length": str(len(user_agent)),
@@ -102,18 +102,24 @@ class HTTPResponse:
             
 class HTTPRequest:
 
-    def __init__(self, method, target, header) -> None:
+    def __init__(self, method, target, version, header) -> None:
         self.method = method
         self.target = target
+        self.version = version
         self.header = header
 
     @classmethod
     def from_raw_response(cls, raw_request: bytes):
         decoded_response = raw_request.decode('utf-8')
         request_lines = decoded_response.split('\r\n')
-        print(request_lines)
-        method, path, header = request_lines[0].split()
-        return cls(method, path, header)
+        method, target, version = request_lines[0].split()
+        headers = {}
+        for line in request_lines[1:]:
+            if line:
+                key, value = line.split(":", 1)
+                headers[key.strip()] = value.strip()
+        return cls(method, target, version, headers)
+
 
 
 if __name__ == "__main__":
