@@ -25,7 +25,8 @@ class HTTPServer:
 
     async def handle_connection(self, reader, writer):
         while True:
-            request = await reader.read()
+            request = await reader.read(1024)
+            print(request)
             if not request:
                 print("Close the connection")
                 writer.close()
@@ -33,6 +34,8 @@ class HTTPServer:
                 return
             
             request = HTTPRequest.from_raw_response(request)
+            print(request)
+            
             target_path = request.target.split("?")[0]
             handler = self.routes.get(target_path, self.handle_dynamic_route)
             await handler(writer, request)
@@ -96,7 +99,7 @@ class HTTPResponse:
             200: "OK",
             404: "Not Found",
         }
-        return phrases.get(self.status_code, "")
+        return phrases.get(self.status_code, "Not Found")
 
             
 class HTTPRequest:
