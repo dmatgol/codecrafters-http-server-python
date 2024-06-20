@@ -1,5 +1,7 @@
 import asyncio
 from urllib.parse import unquote
+import argparse
+import os
 
 
 class HTTPServer:
@@ -11,6 +13,7 @@ class HTTPServer:
             "/": self.handle_root,
             "/echo": self.handle_echo,
             "/user-agent": self.handle_user_agent,
+            "/files": self.handle_file
         }
 
     async def start_server(self):
@@ -34,7 +37,8 @@ class HTTPServer:
             
             request = HTTPRequest.from_raw_response(request)
             
-            target_path = request.target.split("?")[0]
+            target_path = request.target.split("?")[0].rsplit('/', 1)[0]
+            print(target_path)
             handler = self.routes.get(target_path, self.handle_dynamic_route)
             await handler(writer, request)
             
@@ -68,6 +72,27 @@ class HTTPServer:
             "Content-Length": str(len(user_agent)),
         }
         await self.send_response(writer, HTTPResponse(200, headers, user_agent))
+
+    async def handle_file(self, writer, request):
+        args = parse_arguments()
+        file_name = request.target.split("/files/", 1)[-1]
+        file_name = unquote(file_name)
+        file_path = os.path.join(args.directory, file_name)
+
+        if os.path.isfile(file_path):
+            with open(file_path, 'r') as file:
+                file_content = file.read()
+            file_size = os.path.getsize(file_path)
+            headers = {
+                "Content-Type": "application/octet-stream",
+                "Content-Length": str(file_size),
+            }
+            await self.send_response(writer, HTTPResponse(200, headers, file_content))
+        else:
+            await self.handle_404(writer)
+
+
+
 
 
     async def send_response(self, writer, response):
@@ -118,7 +143,20 @@ class HTTPRequest:
             if line:
                 key, value = line.split(":", 1)
                 headers[key.strip()] = value.strip()
+        print(request_lines)
         return cls(method, target, version, headers)
+
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="HTTP server")
+    parser.add_argument('--directory', help="File directory")
+    
+    args = parser.parse_args()
+
+    try:
+        return args
+    except Exception as e:
+       raise ValueError("Invalid flag, please use --directory.")
 
 
 
