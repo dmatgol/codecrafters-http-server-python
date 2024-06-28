@@ -103,8 +103,13 @@ class HTTPServer:
             await self.handle_404(writer)
 
     def add_encoding_header(self, request, headers):
-        if request.header.get("Accept-Encoding", "Content-Type") in self.allowed_compression_methods:
-            headers["Content-Encoding"] = request.header.get("Accept-Encoding")
+        encoding = request.header.get("Accept-Encoding", None)
+        if encoding:
+            encoding_methods = [method.strip() for method in encoding.split(",")]
+            for method in encoding_methods:
+                if method in self.allowed_compression_methods:
+                    headers["Content-Encoding"] = method
+                    break
         return headers
 
     async def send_response(self, writer, response):
