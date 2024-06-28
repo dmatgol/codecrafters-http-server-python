@@ -45,6 +45,7 @@ class HTTPServer:
             
     async def handle_root(self, writer, request):
         headers = {"Content-Type": "text/plain", "Content-Length": "2"}
+        headers = self.add_encoding_header(request, headers)
         return await self.send_response(writer, HTTPResponse(200, headers, "OK"))
     
     async def handle_echo(self, writer, request):
@@ -54,6 +55,7 @@ class HTTPServer:
             "Content-Type": "text/plain",
             "Content-Length": str(len(echoed_string)),
         }
+        headers = self.add_encoding_header(request, headers)
         await self.send_response(writer, HTTPResponse(200, headers, echoed_string))
 
     async def handle_dynamic_route(self, writer, request):
@@ -72,6 +74,7 @@ class HTTPServer:
             "Content-Type": "text/plain",
             "Content-Length": str(len(user_agent)),
         }
+        headers = self.add_encoding_header(request, headers)
         await self.send_response(writer, HTTPResponse(200, headers, user_agent))
 
     async def handle_file(self, writer, request):
@@ -94,9 +97,15 @@ class HTTPServer:
                 "Content-Type": "application/octet-stream",
                 "Content-Length": str(file_size),
             }
+            headers = self.add_encoding_header(request, headers)
             await self.send_response(writer, HTTPResponse(200, headers, file_content))
         else:
             await self.handle_404(writer)
+
+    def add_encoding_header(self, request, headers):
+        if request.header.get("Accept-Encoding", "Content-Type") in self.allowed_compression_methods:
+            headers["Content-Encoding"] = request.header.get("Accept-Encoding")
+        return headers
 
     async def send_response(self, writer, response):
         raw_response = response.to_raw_response()
@@ -104,6 +113,10 @@ class HTTPServer:
         await writer.drain()
         writer.close()
         await writer.wait_closed()
+
+    @property
+    def allowed_compression_methods(self):
+        return {"gzip"}
     
 
 class HTTPResponse:
