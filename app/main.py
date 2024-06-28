@@ -80,7 +80,13 @@ class HTTPServer:
         file_name = unquote(file_name)
         file_path = os.path.join(args.directory, file_name)
 
-        if os.path.isfile(file_path):
+        if request.method == "POST":
+            with open(file_path, "w+") as file:
+                file.write(request.body)
+
+            await self.send_response(writer, HTTPResponse(201, headers=None, message=""))
+
+        elif os.path.isfile(file_path):
             with open(file_path, 'r') as file:
                 file_content = file.read()
             file_size = os.path.getsize(file_path)
@@ -92,10 +98,6 @@ class HTTPServer:
         else:
             await self.handle_404(writer)
 
-
-
-
-
     async def send_response(self, writer, response):
         raw_response = response.to_raw_response()
         writer.write(raw_response.encode("utf-8"))
@@ -106,21 +108,26 @@ class HTTPServer:
 
 class HTTPResponse:
     
-    def __init__(self, status, headers, message):
+    def __init__(self, status, headers = None, message=None):
         self.status_code = status
         self.headers = headers
         self.message = message
 
     def to_raw_response(self):
         response_line = f"HTTP/1.1 {self.status_code} {self.get_reason_phrase()}\r\n"
-        headers = "".join(
-            [f"{key}: {value}\r\n" for key, value in self.headers.items()]
-        )
+        if self.headers:
+            headers = "".join(
+                [f"{key}: {value}\r\n" for key, value in self.headers.items()]
+            )
+        if self.status_code == 201:
+            return response_line + "\r\n"
         return response_line + headers + "\r\n" + self.message
+        
 
     def get_reason_phrase(self):
         phrases = {
             200: "OK",
+            201: "Created",
             404: "Not Found",
         }
         return phrases.get(self.status_code, "Not Found")
@@ -128,11 +135,12 @@ class HTTPResponse:
             
 class HTTPRequest:
 
-    def __init__(self, method, target, version, header) -> None:
+    def __init__(self, method, target, version, header, body) -> None:
         self.method = method
         self.target = target
         self.version = version
         self.header = header
+        self.body = body
 
     @classmethod
     def from_raw_response(cls, raw_request: bytes):
@@ -140,12 +148,17 @@ class HTTPRequest:
         request_lines = decoded_response.split('\r\n')
         method, target, version = request_lines[0].split()
         headers = {}
-        for line in request_lines[1:]:
-            if line:
+        body_start_idx = 1
+        for i, line in enumerate(request_lines[1:]):
+            if ":" in line:
                 key, value = line.split(":", 1)
                 headers[key.strip()] = value.strip()
-        print(request_lines)
-        return cls(method, target, version, headers)
+            if line == "":
+                body_start_idx = i+1
+
+        body = "".join(request_lines[body_start_idx:])
+        print(f"Request splitted: {request_lines}")
+        return cls(method, target, version, headers, body)
 
 
 def parse_arguments():
